@@ -1,12 +1,16 @@
 # dsh-aurachat
 
+![warn](./test/warn.png)
+
 DeepSeek Harness（DSH）插件，住在浏览器里的 AI 伙伴，该项目仿照(抄袭)[accomplish07zrh-eng/dsh-aurabot-qq](https://github.com/accomplish07zrh-eng/dsh-aurabot-qq)，区别是不依赖QQ，目前已实现：有人格、心情和记忆，能看图、发语音、听语音、发和收表情包、写日记、逛空间回评论、还会主动找你聊天。
+
+![example1](./test/1.png)
 
 **入口**
 
 - 默认绑定`0.0.0.0:2332`可直接通过浏览器访问，ip和端口可在设置修改
 - DSH 左侧栏「自动化任务」下面的「AuraChat」，功能基本一致，但无法发送语音
-- 支持兼容的跨平台客户端登录，例如姊妹项目[aurachat-app](----------------------------)
+- 支持兼容的跨平台客户端登录，例如姊妹项目[aurachat-client](https://github.com/hsushjk/aurachat-client)
 - （跨平台客户端登录意义：后台运行，消息提示，绕过ssl限制）
 
 **聊天**
@@ -134,9 +138,6 @@ http 接口，客户端需要 base URL + token：
 
 **项目存在的意义？** 首先是规避QQ风控。其次是我职业很特殊，一年有大半时间没有网，这个项目搭配本地部署大模型可以实现全程不联网。
 
-## 目录结构
-
-```
 ## 目录结构
 
 ```text
