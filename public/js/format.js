@@ -13,6 +13,24 @@ export function fmtDay(t) {
   return (same ? '今天 ' : (d.getMonth() + 1) + '月' + d.getDate() + '日 ') + fmtClock(t)
 }
 
+// 聊天里的日期分隔条：同一天只归成一组，返回「今天 / 昨天 / M月d日 / yyyy年M月d日」
+export function dayKey(t) {
+  const d = new Date(t || Date.now())
+  return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate()
+}
+
+export function dayLabel(t) {
+  const d = new Date(t || Date.now())
+  const now = new Date()
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const startThat = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const diff = Math.round((startToday - startThat) / 86400000)
+  if (diff === 0) return '今天'
+  if (diff === 1) return '昨天'
+  if (d.getFullYear() === now.getFullYear()) return (d.getMonth() + 1) + '月' + d.getDate() + '日'
+  return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日'
+}
+
 export const BARS = Array.from({ length: 16 }, (_, i) => '<i style="height:' + (5 + ((i * 7) % 11)) + 'px"></i>').join('')
 
 export function fmtDur(sec) {

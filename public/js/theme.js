@@ -31,11 +31,20 @@ export function applyTheme() {
   const t = themeCfg()
   const mode = t.mode || 'follow'
   const wall = mode === 'acrylic' || mode === 'frosted'
-  const dark = mode === 'dark' || wall ? (mode === 'dark' ? true : dshIsDark()) : mode === 'light' ? false : dshIsDark()
+  // 无背景图的玻璃模式：固定深色黑灰，别跟系统跑成白底糊白
+  let dark
+  if (mode === 'light') dark = false
+  else if (mode === 'dark') dark = true
+  else if (wall && !t.background) dark = true
+  else dark = dshIsDark()
   const theme = dark ? 'dark' : 'light'
   if (document.body.dataset.theme !== theme) document.body.dataset.theme = theme
   if (wall) { if (document.body.dataset.wall !== mode) document.body.dataset.wall = mode }
   else if (document.body.dataset.wall) delete document.body.dataset.wall
+  // 玻璃模式没背景图时打纯色黑灰底，跟主题深浅无关
+  const plain = wall && !t.background
+  if (plain) { if (document.body.dataset.wallplain !== '1') document.body.dataset.wallplain = '1' }
+  else if (document.body.dataset.wallplain) delete document.body.dataset.wallplain
   let img = 'none'
   if (wall && t.background) img = t.background === 'local' ? 'url("' + bgUrl() + '")' : 'url("' + t.background + '")'
   if (document.body.style.getPropertyValue('--bg-image') !== img) document.body.style.setProperty('--bg-image', img)

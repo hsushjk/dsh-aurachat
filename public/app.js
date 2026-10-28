@@ -1,5 +1,5 @@
 // 同一份前端会被挂在 DSH 的 /aurachat/ 下，也会被固定端口挂在根路径，所以顺着当前地址推，别写死。
-import { esc, pad2, fmtClock, fmtDay, BARS, fmtDur, greet } from './js/format.js'
+import { esc, pad2, fmtClock, fmtDay, dayKey, dayLabel, BARS, fmtDur, greet } from './js/format.js'
 import { bindTheme, bgUrl, bustBackground, applyTheme, watchSystemDark } from './js/theme.js'
 import { TONES, playSound as playTone } from './js/sound.js'
 import { encodeWav } from './js/audio.js'
@@ -389,6 +389,7 @@ async function loadOlder(btn) {
     if (more) more.remove()
     // 从后往前插到最前面，保证 DOM 顺序和原来的列表一致
     for (let i = list.length - 1; i >= 0; i--) prependMessage(list[i])
+    reflowDaySeparators()
     box.scrollTop = box.scrollHeight - keep
   }
   renderHistoryMore()
@@ -430,6 +431,26 @@ function buildMessageNode(m) {
   return wrap
 }
 
+// 日期分隔条：同一天的消息只标一个「今天 / 昨天 / 日期」
+function daySepNode(t) {
+  const el = document.createElement('div')
+  el.className = 'day-sep'
+  el.textContent = dayLabel(t)
+  return el
+}
+
+// 按 DOM 里消息的实际顺序重排日期分隔条（追加 / 前插 / 过期裁剪后都调一次）
+function reflowDaySeparators() {
+  const box = $('#msgs')
+  if (!box) return
+  box.querySelectorAll('.day-sep').forEach((el) => el.remove())
+  let prev = ''
+  box.querySelectorAll('.msg').forEach((el) => {
+    const k = dayKey(Number(el.dataset.t || 0))
+    if (k !== prev) { box.insertBefore(daySepNode(Number(el.dataset.t || 0)), el); prev = k }
+  })
+}
+
 function appendMessage(m, scroll = true) {
   const box = $('#msgs')
   if (!box) return
@@ -437,6 +458,7 @@ function appendMessage(m, scroll = true) {
   const empty = box.querySelector('.empty')
   if (empty) empty.remove()
   box.appendChild(buildMessageNode(m))
+  reflowDaySeparators()
   if (scroll) scrollDown()
 }
 
@@ -502,6 +524,7 @@ function connectStream() {
         const box = $('#msgs')
         if (before > 0 && box) {
           box.querySelectorAll('.msg[data-t]').forEach((el) => { if (Number(el.dataset.t) < before) el.remove() })
+          reflowDaySeparators()
           historyState.oldestAt = Math.max(historyState.oldestAt || 0, before)
         }
         if (typeof ev.hasMore === 'boolean') historyState.hasMore = ev.hasMore

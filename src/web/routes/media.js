@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { dataDir } from '../../core/store.js'
 import { stickerPath } from '../../features/stickers.js'
@@ -135,7 +135,13 @@ export function register(router, ctx) {
     const me = requireOwner(req, res); if (!me) return
     const b = await readBody(req)
     const data = stripDataUrl(b.data)
-    if (!data) return json(res, { ok: false, reason: '没有图片数据' })
+    // 空数据 = 清除背景图（前端「清除」按钮走这里）
+    if (!data) {
+      try { unlinkSync(dataDir('background')) } catch {}
+      try { unlinkSync(dataDir('background.mime')) } catch {}
+      setConfig({ theme: { mode: getConfig().theme.mode, background: '' } })
+      return json(res, { ok: true })
+    }
     writeFileSync(dataDir('background'), Buffer.from(data, 'base64'))
     writeFileSync(dataDir('background.mime'), b.mime || 'image/jpeg')
     setConfig({ theme: { mode: getConfig().theme.mode, background: 'local' } })

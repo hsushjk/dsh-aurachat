@@ -57,6 +57,8 @@ body::before {
   transition: opacity .2s;
 }
 body[data-wall]::before { opacity: 1; }
+/* 玻璃模式清掉背景图后：纯色黑灰底，别露白 */
+body[data-wallplain] { background: #101318; }
 .hidden { display: none !important; }
 .muted { color: var(--muted); }
 button, input, textarea, select { font: inherit; color: inherit; }
@@ -185,6 +187,12 @@ button:disabled { opacity: .55; cursor: default; }
 }
 .more-history:hover { color: var(--text); border-color: var(--accent); }
 .more-history:disabled { opacity: .6; cursor: default; }
+/* 聊天里的日期分隔条（今天 / 昨天 / 日期） */
+.day-sep {
+  align-self: center; margin: 6px 0 2px; padding: 1px 10px;
+  font-size: 12px; color: var(--muted); user-select: none;
+  background: var(--panel); border: 1px solid var(--line2); border-radius: 999px;
+}
 .bubble .expired { color: var(--muted); font-size: 12px; }
 .msg { max-width: 76%; display: flex; flex-direction: column; }
 .msg.me { align-self: flex-end; align-items: flex-end; }
