@@ -1,0 +1,40 @@
+* text=auto eol=lf
+
+*.js       text eol=lf
+*.mjs      text eol=lf
+*.css      text eol=lf
+*.html     text eol=lf
+*.json     text eol=lf
+*.md       text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.svg      text eol=lf
+*.txt      text eol=lf
+*.patch    text eol=lf
+cordis.patch.yml text eol=lf
+
+*.bat      text eol=crlf
+*.cmd      text eol=crlf
+*.ps1      text eol=crlf
+
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.webp     binary
+*.gif      binary
+*.ico      binary
+*.wav      binary
+*.mp3      binary
+*.ogg      binary
+*.webm     binary
+*.woff     binary
+*.woff2    binary
+*.ttf      binary
+*.onnx     binary
+*.zip      binary
+
+test/shot-*.png binary
+
+# 发布包里不带测试与开发脚本
+test/      export-ignore
+.gitattributes export-ignore

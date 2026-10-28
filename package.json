@@ -1,0 +1,45 @@
+{
+  "name": "dsh-aurachat",
+  "version": "1.0",
+  "description": "AuraChat：住在网页里的 AI 伙伴 —— DeepSeek Harness 插件",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "src/host.js",
+  "exports": {
+    ".": "./src/host.js",
+    "./client": "./client/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "slots"
+      ],
+      "external": [
+        "react"
+      ]
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "web",
+    "ai-companion"
+  ],
+  "files": [
+    "src",
+    "client",
+    "personas",
+    "public",
+    "cordis.patch.yml",
+    "README.md",
+    "dshreadme.md",
+    "package.json"
+  ]
+}
