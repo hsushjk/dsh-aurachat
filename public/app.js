@@ -1640,6 +1640,19 @@ function armedClick(btn, label, run) {
 async function loadGuests() {
   const box = $('#guest-list')
   if (!box) return
+  const create = $('#g-create')
+  if (create) create.onclick = async () => {
+    const username = ($('#g-u')?.value || '').trim()
+    if (!username) return toast('先填个用户名', 'err')
+    const r2 = await api('/api/guests', { method: 'POST', body: { username, displayName: ($('#g-d')?.value || '').trim() || username, level: $('#g-level')?.value || 'social' } })
+    if (r2.ok) {
+      toast('创建好了，一次性密码：' + r2.password)
+      if (navigator.clipboard) navigator.clipboard.writeText(r2.password).catch(() => {})
+      if ($('#g-u')) $('#g-u').value = ''
+      if ($('#g-d')) $('#g-d').value = ''
+      loadGuests()
+    } else toast(r2.reason || '没建成', 'err')
+  }
   const r = await api('/api/guests')
   const list = (r.ok && r.guests) || []
   if (!list.length) { box.innerHTML = '<div class="muted" style="font-size:12px;margin-top:8px">还没有客人。</div>'; return }
@@ -1671,18 +1684,6 @@ async function loadGuests() {
     if (!sel) return
     const r2 = await api('/api/guests/' + sel.dataset.glevel, { method: 'PATCH', body: { level: sel.value } })
     toast(r2.ok ? '改好了' : (r2.reason || '没改成'), r2.ok ? '' : 'err')
-  }
-  const create = $('#g-create')
-  if (create) create.onclick = async () => {
-    const username = ($('#g-u')?.value || '').trim()
-    if (!username) return toast('先填个用户名', 'err')
-    const r2 = await api('/api/guests', { method: 'POST', body: { username, displayName: ($('#g-d')?.value || '').trim() || username, level: $('#g-level')?.value || 'social' } })
-    if (r2.ok) {
-      toast('创建好了，一次性密码：' + r2.password)
-      if (navigator.clipboard) navigator.clipboard.writeText(r2.password).catch(() => {})
-      $('#g-u').value = ''; $('#g-d').value = ''
-      loadGuests()
-    } else toast(r2.reason || '没建成', 'err')
   }
 }
 
