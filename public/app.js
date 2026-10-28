@@ -663,7 +663,6 @@ function bindDiaryEvents(body) {
   body.onclick = async (e) => {
     const del = e.target.closest('[data-del-entry]')
     if (del) {
-      if (!armedClick(del, '真的要删？')) return
       const r = await api('/api/diary/delete', { method: 'POST', body: { entryId: del.dataset.delEntry } })
       toast(r.ok ? '删了' : (r.reason || '没删掉'), r.ok ? '' : 'err')
       loadDiary()
@@ -1504,7 +1503,6 @@ function bindPersonaEditor() {
   }
   $('#pe-del').onclick = async () => {
     if (!editingId) return toast('这是还没存的新人设，直接收起就行', 'err')
-    if (!confirm('真删掉这个人设？删了就找不回来了')) return
     const r = await api('/api/personas/delete', { method: 'POST', body: { id: editingId } })
     if (!r.ok) return toast(r.reason || '没删掉', 'err')
     personaList = (await api('/api/personas')).personas || []
@@ -1595,7 +1593,6 @@ async function loadStickerGrid() {
     }
     const dl = e.target.closest('[data-del-sticker]')
     if (dl) {
-      if (!armedClick(dl, '真的要删？')) return
       const r2 = await api('/api/stickers/' + dl.dataset.delSticker, { method: 'DELETE' })
       toast(r2.ok ? '删了' : (r2.reason || '没删掉'), r2.ok ? '' : 'err'); loadStickerGrid()
     }
@@ -1622,19 +1619,6 @@ function inlineEditor(host, value, placeholder, onSave) {
     await onSave(v)
   }
   input.onkeydown = (e) => { if (e.key === 'Enter') box.querySelector('.primary').click(); if (e.key === 'Escape') close() }
-}
-
-function armedClick(btn, label, run) {
-  if (btn.dataset.armed === '1') {
-    clearTimeout(Number(btn.dataset.armedTimer || 0))
-    run()
-    return true
-  }
-  btn.dataset.armed = '1'
-  const old = btn.textContent
-  btn.textContent = label || '确认？'
-  btn.dataset.armedTimer = String(setTimeout(() => { btn.dataset.armed = ''; btn.textContent = old }, 3000))
-  return false
 }
 
 async function loadGuests() {
@@ -1674,7 +1658,6 @@ async function loadGuests() {
     }
     const gd = e.target.closest('[data-gdel]')
     if (gd) {
-      if (!armedClick(gd, '真的要删？')) return
       const r2 = await api('/api/guests/' + gd.dataset.gdel, { method: 'DELETE' })
       toast(r2.ok ? '删了' : (r2.reason || '没删掉'), r2.ok ? '' : 'err'); loadGuests()
     }
