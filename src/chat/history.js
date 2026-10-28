@@ -1,9 +1,10 @@
 // 聊天记录分片存储：
 //   聊天记录（纯文字/表情引用）按 100 条一片落在 chats/<chatId>/ 下，
 //   图片和语音的二进制单独落在 media/<chatId>/，消息里只留 mediaId。
-// 写入永远追加到「当前片」，聊天途中不切片；等人空闲 2 分钟后才把当前片
-// 按 100 条切开（250 条 → 100+100+50），最后一片继续当当前片。
-// 所以「查看更早的记录」每次只取上一片，翻页边界和文件边界完全一致。
+// 写入永远只碰「当前片」：当前片写满 100 条就滚动到新的一片再写，
+// 所以任何一次 append 的读/写都是常数级（≤100 条），不会随聊天变长而变慢。
+// 空闲 2 分钟的 finalize() 只负责兜底（清过期片、清孤儿媒体、整理历史遗留的超长片）。
+// 「查看更早的记录」每次只取上一片，翻页边界和文件边界完全一致。
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -13,6 +14,8 @@ import { mimeOf } from '../core/image.js'
 export const SEGMENT_LIMIT = 100
 export const IDLE_MS = 2 * 60 * 1000
 export const DEFAULT_KEEP_DAYS = 7
+// 孤儿媒体（没有任何消息引用）至少放这么久再删，避免和"写文件→写消息"之间的窗口打架
+export const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
 const EXT_BY_MIME = {
   'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp',
@@ -169,12 +172,14 @@ export function createHistory({ log = console, emit = () => {}, getKeepDays = ()
     const msg = extractMedia(chatId, { id: randomUUID(), t: Date.now(), ...payload })
     const idx = readIndex(chatId)
     let seg = idx.segments[idx.segments.length - 1]
-    if (!seg) {
+    // 当前片写满就滚动：单文件永远 ≤ SEGMENT_LIMIT 条，append 的代价是常数级。
+    // 前端不受影响——老消息还在磁盘上，滚到顶时按 pageFile(prev) 取得到；
+    // 正在看的人靠 SSE 追加，列表不会因为滚动切片而少一条。
+    if (!seg || (seg.count || 0) >= SEGMENT_LIMIT) {
       seg = { id: newSegmentId(idx.segments.length + 1), from: msg.t, to: msg.t, count: 0 }
       idx.segments.push(seg)
+      writeIndex(chatId, idx)
     }
-    // 注意：这里**不按 100 条滚动**。连聊 200 条也不该把前面的悄悄藏起来，
-    // 裁切放到空闲时由 splitCurrent() 一次性做（见 finalize）。
     const file = segFile(chatId, seg.id)
     const data = readJson(file, null) || { chatId, id: seg.id, from: msg.t, to: msg.t, messages: [] }
     data.messages.push(msg)
@@ -295,6 +300,35 @@ export function createHistory({ log = console, emit = () => {}, getKeepDays = ()
     return idx.segments.reduce((n, s) => n + (s.count || 0), 0)
   }
 
+  // 孤儿媒体清理：media 目录里没有任何消息引用的文件，落盘超过 grace 就删掉。
+  // 「写文件成功、写消息失败」或者手动删过分片都会留下这种文件；
+  // grace 是为了不误删刚写进去、消息还没落盘的那一张。
+  function reapOrphanMedia(chatId, graceMs = ORPHAN_GRACE_MS) {
+    let files = []
+    try { files = readdirSync(mediaDir(chatId)) } catch { return 0 }
+    if (!files.length) return 0
+    const used = new Set()
+    const idx = readIndex(chatId)
+    for (const seg of idx.segments) {
+      if (!seg.count) continue
+      const data = readSeg(chatId, seg.id)
+      for (const m of data?.messages || []) if (m.mediaId) used.add(safeName(m.mediaId))
+    }
+    const now = Date.now()
+    let removed = 0
+    for (const f of files) {
+      if (used.has(f)) continue
+      const p = join(mediaDir(chatId), f)
+      try {
+        if (now - statSync(p).mtimeMs < graceMs) continue
+        unlinkSync(p)
+        removed += 1
+      } catch {}
+    }
+    if (removed) log.info?.(`孤儿媒体清理：${chatId} 删了 ${removed} 个没人引用的文件`)
+    return removed
+  }
+
   // 过期清理：整片比 keepDays 还旧就删掉（连带这片的媒体文件），
   // 再顺手扫一遍 media 目录里过期/没人要的文件。
   function sweep(chatId) {
@@ -348,7 +382,9 @@ export function createHistory({ log = console, emit = () => {}, getKeepDays = ()
         try { if (statSync(p).mtimeMs < cutoff) unlinkSync(p) } catch {}
       }
     } catch {}
-    return { changed: dropped > 0, dropped, oldestAt: oldestAt(chatId), hasMore: totalOf(chatId) > 0 }
+    // 还没到保留期、但已经没人引用的文件（写文件成功但消息没落盘的孤儿）
+    const orphans = reapOrphanMedia(chatId)
+    return { changed: dropped > 0, dropped, orphans, oldestAt: oldestAt(chatId), hasMore: totalOf(chatId) > 0 }
   }
 
   function sweepAll() {
@@ -447,7 +483,7 @@ export function createHistory({ log = console, emit = () => {}, getKeepDays = ()
 
   return {
     append, patchLast, page, pageFile, recent, last, oldestAt, totalOf,
-    sweep, sweepAll, touch, finalize, splitCurrent, closeAll, stats,
+    sweep, sweepAll, touch, finalize, splitCurrent, closeAll, stats, reapOrphanMedia,
     saveMedia, mediaPath: mediaFile, mediaDir, chatDir,
   }
 }

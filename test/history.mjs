@@ -1,6 +1,7 @@
 // 分片存储冒烟测试：node test/history.mjs
-// 覆盖：聊天途中不切片 / 空闲裁切成 100+100+50 / 分页 / mediaId 抽取 / patchLast / 过期清理
-import { mkdtempSync, rmSync, readdirSync } from 'node:fs'
+// 覆盖：写满 100 条自动滚动 / 单片体积有界 / 分页 / mediaId 抽取 / patchLast /
+//       过期清理 / 孤儿媒体清理 / 同毫秒边界翻页
+import { mkdtempSync, rmSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -24,16 +25,22 @@ for (let i = 1; i <= 250; i++) {
 }
 
 const st0 = h.stats('owner')
-ok(st0.segments === 1, '聊天途中不切片，250 条还在 1 个片里，实际 ' + st0.segments)
+ok(st0.segments === 3, '写满 100 条自动滚动，250 条 = 3 个片，实际 ' + st0.segments)
 ok(st0.messages === 250, '总条数 250')
 ok(lastAppended && lastAppended.id && lastAppended.t > 0, 'append 返回带 id/t 的消息')
 
-// 2) 空闲裁切：250 条 → 100 + 100 + 50
+// 1b) 单片体积有界：任何一片都不超过 100 条（append 代价是常数级，不随聊天变长）
+const ownerSegFiles = readdirSync(join(dir, 'chats', 'owner')).filter((f) => f.endsWith('.json') && f !== 'index.json')
+const segSizes = ownerSegFiles.map((f) => JSON.parse(readFileSync(join(dir, 'chats', 'owner', f), 'utf8')).messages.length)
+ok(Math.max(...segSizes) <= 100, '每片 ≤100 条，实际 ' + segSizes.join('+'))
+ok(segSizes.reduce((a, b) => a + b, 0) === 250, '分片条数加起来 250')
+
+// 2) 空闲 finalize：已经没有超长片可切，也不该发 history 事件
 const fin = h.finalize('owner')
-ok(fin.split && fin.split.join('+') === '100+100+50', '空闲裁切成 100+100+50，实际 ' + (fin.split || []).join('+'))
+ok(fin.split === null, '空闲时没有超长片可切，实际 ' + JSON.stringify(fin.split))
 const st = h.stats('owner')
-ok(st.segments === 3, '裁切后 3 片，实际 ' + st.segments)
-ok(!events.some((e) => e[0] === 'history'), '只裁切没删东西，不发 history 事件')
+ok(st.segments === 3, '空闲后仍是 3 片，实际 ' + st.segments)
+ok(!events.some((e) => e[0] === 'history'), '只滚动没删东西，不发 history 事件')
 
 const segFiles = readdirSync(join(dir, 'chats', 'owner')).filter((f) => f.endsWith('.json') && f !== 'index.json')
 ok(segFiles.length === 3, '磁盘上 3 个分片文件')
@@ -110,6 +117,19 @@ for (let guard = 0; guard < 10; guard++) {
   cursor2 = p.oldestAt
 }
 ok(seen2.size === 120, '同毫秒边界翻页没丢消息，拿到 ' + seen2.size)
+
+// 9) 孤儿媒体：没被任何消息引用的文件，超过 grace 才删；刚写进去的要留着
+const mediaDirOwner = join(dir, 'media', 'owner')
+const beforeOrphan = readdirSync(mediaDirOwner).length
+writeFileSync(join(mediaDirOwner, 'orphan-old.bin'), 'x')
+const twoHoursAgo = (Date.now() - 2 * 60 * 60 * 1000) / 1000
+utimesSync(join(mediaDirOwner, 'orphan-old.bin'), twoHoursAgo, twoHoursAgo)
+writeFileSync(join(mediaDirOwner, 'orphan-new.bin'), 'x')
+const r3 = h.sweep('owner')
+ok(r3.orphans === 1, '孤儿媒体删掉 1 个，实际 ' + r3.orphans)
+ok(!readdirSync(mediaDirOwner).includes('orphan-old.bin'), '两小时前的孤儿被清掉')
+ok(readdirSync(mediaDirOwner).includes('orphan-new.bin'), '刚写的孤儿还在（grace 保护）')
+ok(readdirSync(mediaDirOwner).length === beforeOrphan + 1, '有消息引用的媒体一个没少')
 
 rmSync(dir, { recursive: true, force: true })
 console.log(process.exitCode ? 'SOME FAILED' : 'ALL PASS')
