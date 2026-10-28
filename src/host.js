@@ -100,6 +100,8 @@ export function apply(ctx) {
 
   const web = createWebServer({ dsh: ctx, getConfig, setConfig, publicConfig, log })
 
+  log.info('聊天存储 v2 已加载：一文件=一页（seg-001-…），媒体外置，保留天数可配')
+
   let memory = null
   let azone = null
   let selfDrive = null

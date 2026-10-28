@@ -7,11 +7,11 @@ import { parseReply, bubbleDelay } from './reply.js'
 import { levelFor, presetFor, isOwner } from './access.js'
 import { fetchImage } from '../core/net.js'
 import { mimeOf } from '../core/image.js'
+import { createHistory, SEGMENT_LIMIT, DEFAULT_KEEP_DAYS } from './history.js'
 
 const WORKSPACE_DIR = process.env.AURACHAT_WORKSPACE || join(homedir(), 'AuraChat', 'chats')
 const WORKSPACE_TITLE = 'AuraChat · Web'
 const SOURCE_KIND = 'aurachat'
-const MESSAGE_CAP = 500
 const BUSY_MAX_MS = 5 * 60 * 1000
 const MAX_TYPING_HOLD_MS = 60 * 1000
 
@@ -23,8 +23,12 @@ export function createHub({
   onActivity, isMuted, moodEffects, emit,
 }) {
   const chatlogDir = () => dataDir('chatlog')
-  const messagesFile = () => dataDir('messages.json')
   const sessionsFile = () => dataDir('sessions.json')
+  const history = createHistory({
+    log,
+    emit: (type, payload) => emit?.(type, payload),
+    getKeepDays: () => Number((getConfig().history || {}).keepDays) || DEFAULT_KEEP_DAYS,
+  })
 
   const mounted = new WeakMap()
   const sessionToChat = new Map()
@@ -45,8 +49,6 @@ export function createHub({
 
   function map() { return readJson(sessionsFile(), () => ({ chats: {} })) }
   function saveMap(m) { writeJson(sessionsFile(), m) }
-  function readMessages() { return readJson(messagesFile(), () => ({})) }
-  function saveMessages(m) { writeJson(messagesFile(), m) }
 
   function logChat(chatId, who, text, uid) {
     const day = new Date().toISOString().slice(0, 10)
@@ -74,23 +76,32 @@ export function createHub({
     try { unlinkSync(join(chatlogDir(), `${day}.jsonl`)) } catch {}
   }
 
-  function appendMessage(chatId, { who, uid = '', text, kind = 'text', ...extra }) {
-    const store = readMessages()
-    const list = store[chatId] || (store[chatId] = [])
-    const msg = { id: randomUUID(), who, uid, text, kind, t: Date.now(), ...extra }
-    list.push(msg)
-    if (list.length > MESSAGE_CAP) list.splice(0, list.length - MESSAGE_CAP)
-    saveMessages(store)
+  function appendMessage(chatId, payload) {
+    const msg = history.append(chatId, payload)
     emit?.('message', { chatId, message: msg })
+    history.touch(chatId)
     return msg
   }
 
   function messagesOf(chatId) {
-    return readMessages()[chatId] || []
+    return history.page(chatId, { limit: SEGMENT_LIMIT }).messages
+  }
+
+  function pageOf(chatId, opts) {
+    return history.page(chatId, opts)
+  }
+
+  // 「一个分片文件 = 一页」的取法，网页端翻历史用
+  function pageFileOf(chatId, opts) {
+    return history.pageFile(chatId, opts)
+  }
+
+  function historyStats(chatId) {
+    return history.stats(chatId)
   }
 
   function recentChat(chatId, n = 20) {
-    return messagesOf(chatId)
+    return history.page(chatId, { limit: Math.max(30, n * 3) }).messages
       .filter((m) => m.kind === 'text' || m.kind === 'voice')
       .slice(-n)
       .map((m) => ({ t: m.t, who: m.who, text: m.text, uid: m.uid }))
@@ -387,10 +398,11 @@ export function createHub({
       if (heard) {
         content.push({ type: 'text', text: `【对方发来一条语音（约 ${Math.round(voice.dur || 0)} 秒），转成文字是：${heard}】` })
 
-        const store = readMessages()
-        const list = store[chatId] || []
-        const last = list[list.length - 1]
-        if (last && last.kind === 'voice') { last.heard = heard; saveMessages(store) }
+        const last = history.last(chatId)
+        if (last && last.kind === 'voice' && !last.heard) {
+          history.patchLast(chatId, { heard })
+          emit?.('message', { chatId, message: { ...last, heard } })
+        }
         logChat(chatId, nickname || userId, `[语音] ${heard}`, userId)
       } else {
 
@@ -423,19 +435,14 @@ export function createHub({
     enqueue(chat, content, userId, false)
   }
 
+  // 语音/图片过期清理：整片过期就删片删媒体，并把新的边界推给客户端。
+  // （host.js 每小时调一次；每次追加消息后的空闲定时器也会扫。）
   function cleanupVoice() {
-    const store = readMessages()
-    const today = new Date().toISOString().slice(0, 10)
-    let changed = false
-    for (const chatId of Object.keys(store)) {
-      for (const m of store[chatId] || []) {
-        if (m.kind === 'voice' && m.voice) {
-          const day = new Date(m.t).toISOString().slice(0, 10)
-          if (day < today) { delete m.voice; m.cleaned = true; changed = true }
-        }
-      }
+    const changed = history.sweepAll()
+    for (const row of changed) {
+      emit?.('history', { chatId: row.chatId, oldestAt: row.oldestAt, droppedBefore: row.oldestAt, hasMore: false })
     }
-    if (changed) saveMessages(store)
+    return changed.length
   }
 
   function enqueue(chat, content, senderId, wantVoice, mode = 'normal') {
@@ -620,6 +627,9 @@ export function createHub({
     deleteChatLog,
     recentChat,
     messagesOf,
+    pageOf,
+    pageFileOf,
+    historyStats,
     cleanupVoice,
     sessions,
     stats: () => ({ ...stats }),

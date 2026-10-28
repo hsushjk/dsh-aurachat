@@ -17,6 +17,8 @@ let models = []          // [{provider, model}]
 let personaList = []     // [{id, name, tags}]
 let currentView = 'chat'
 let stream = null
+// 聊天记录分页状态：服务端一片 100 条，往上翻一页取比 oldestAt 更早的 100 条
+let historyState = { oldestAt: 0, hasMore: false, loading: false }
 
 const $ = (s, el) => (el || document).querySelector(s)
 const $$ = (s, el) => Array.from((el || document).querySelectorAll(s))
@@ -333,47 +335,121 @@ async function refreshMoodPill() {
 }
 
 async function loadMessages() {
-  const r = await api('/api/messages')
+  // 一个分片文件 = 一页：首屏只渲染最新那片，往上翻才取上一片
+  const r = await api('/api/messages?file=last')
   const box = $('#msgs')
   if (!box) return
   box.innerHTML = ''
+  historyState = { oldestAt: 0, hasMore: false, loading: false, index: 0, total: 0 }
   if (!r.ok) { box.innerHTML = '<div class="empty">读不到消息：' + esc(r.reason || '') + '</div>'; return }
   const list = r.messages || []
+  if (r.file) { historyState.index = Number(r.file.index) || 0; historyState.total = Number(r.file.total) || 0 }
   if (!list.length) { box.innerHTML = '<div class="empty">还没说过话。打个招呼吧。</div>'; return }
   for (const m of list) appendMessage(m, false)
+  historyState.oldestAt = r.oldestAt || (list[0] && list[0].t) || 0
+  historyState.hasMore = Boolean(r.hasMore)
+  renderHistoryMore()
   scrollDown()
 }
 
-function appendMessage(m, scroll = true) {
+// 「查看更早的记录」按钮：只在还有更早的消息时出现，位置固定在列表最上面
+function renderHistoryMore() {
   const box = $('#msgs')
   if (!box) return
-  const empty = box.querySelector('.empty')
-  if (empty) empty.remove()
+  const old = box.querySelector('.more-history')
+  if (old) old.remove()
+  if (!historyState.hasMore) return
+  const btn = document.createElement('button')
+  btn.className = 'more-history'
+  // 一个文件就是一页
+  btn.textContent = '查看更早的记录'
+  btn.onclick = () => loadOlder(btn)
+  box.insertBefore(btn, box.firstChild)
+}
+
+async function loadOlder(btn) {
+  if (historyState.loading) return
+  historyState.loading = true
+  if (btn) { btn.textContent = '正在取…'; btn.disabled = true }
+  const box = $('#msgs')
+  const keep = box ? box.scrollHeight - box.scrollTop : 0
+  const r = await api('/api/messages?file=prev&before=' + encodeURIComponent(historyState.oldestAt || 0))
+  historyState.loading = false
+  if (!r || !r.ok) {
+    if (btn) { btn.textContent = '查看更早的记录'; btn.disabled = false }
+    return toast(r?.reason || '没取到更早的记录', 'err')
+  }
+  const list = r.messages || []
+  if (r.file) { historyState.index = Number(r.file.index) || 0; historyState.total = Number(r.file.total) || 0 }
+  if (r.oldestAt) historyState.oldestAt = r.oldestAt
+  if (!list.length) historyState.hasMore = false
+  else historyState.hasMore = Boolean(r.hasMore)
+  if (box) {
+    const more = box.querySelector('.more-history')
+    if (more) more.remove()
+    // 从后往前插到最前面，保证 DOM 顺序和原来的列表一致
+    for (let i = list.length - 1; i >= 0; i--) prependMessage(list[i])
+    box.scrollTop = box.scrollHeight - keep
+  }
+  renderHistoryMore()
+}
+
+function mediaUrl(m) {
+  if (!m || !m.mediaId) return ''
+  return BASE + '/api/media/' + encodeURIComponent(m.mediaId) + '?token=' + encodeURIComponent(token)
+}
+
+function buildMessageNode(m) {
   const mine = m.who === 'user'
   const wrap = document.createElement('div')
   wrap.className = 'msg ' + (mine ? 'me' : 'her')
+  wrap.dataset.t = String(m.t || '')
+  if (m.id) wrap.dataset.id = String(m.id)
   let inner = ''
   if (m.kind === 'voice') {
-    inner = m.voice
+    const src = m.mediaId ? mediaUrl(m) : (m.voice ? 'data:' + (m.voiceMime || 'audio/mpeg') + ';base64,' + m.voice : '')
+    inner = src
       ? '<div class="voice-bar" data-vid="' + esc(m.id || '') + '">' +
         '<button class="vb-play" data-voice-play aria-label="播放"></button>' +
         '<span class="vb-bars">' + BARS + '</span>' +
         '<span class="vb-dur">' + (m.dur ? fmtDur(m.dur) : '') + '</span>' +
-        '<audio preload="metadata" src="data:' + (m.voiceMime || 'audio/mpeg') + ';base64,' + m.voice + '"></audio></div>' +
+        '<audio preload="metadata" src="' + src + '"></audio></div>' +
         (m.heard ? '<div class="heard">听成了：' + esc(m.heard) + '</div>' : '')
-      : (m.heard ? '<div class="heard">听成了：' + esc(m.heard) + '</div>' : esc(m.text || '[语音已清理]'))
+      : (m.heard ? '<div class="heard">听成了：' + esc(m.heard) + '</div>' : esc(m.text || '[语音已过期]'))
   } else if (m.kind === 'sticker') {
     inner = '<img src="' + BASE + '/api/sticker/' + esc(m.sticker) + '" alt="' + esc(m.name || '表情') + '" />'
   } else if (m.kind === 'image') {
-    inner = '<img src="data:' + (m.imageMime || 'image/png') + ';base64,' + m.image + '" alt="图片" />'
+    const src = m.mediaId ? mediaUrl(m) : (m.image ? 'data:' + (m.imageMime || 'image/png') + ';base64,' + m.image : '')
+    inner = src ? '<img src="' + src + '" alt="图片" />' : '<span class="expired">图片已经过期了</span>'
   } else {
     inner = esc(m.text || '')
   }
   if (mine && m.kind === 'image' && cfg?.stickers?.steal !== false) inner += '<button class="collect" data-collect="' + esc(m.id || '') + '">收进表情库</button>'
   wrap.innerHTML = (mine ? '' : '<div class="sender">' + esc(bot()) + '</div>') +
     '<div class="bubble"><div class="body">' + inner + '</div><span class="meta">' + esc(fmtClock(m.t)) + '</span></div>'
-  box.appendChild(wrap)
+  return wrap
+}
+
+function appendMessage(m, scroll = true) {
+  const box = $('#msgs')
+  if (!box) return
+  if (m?.id && box.querySelector('[data-id="' + cssId(m.id) + '"]')) return
+  const empty = box.querySelector('.empty')
+  if (empty) empty.remove()
+  box.appendChild(buildMessageNode(m))
   if (scroll) scrollDown()
+}
+
+// 消息 id 里可能有特殊字符，塞进属性选择器前先转义
+function cssId(id) { return String(id).replace(/["\\]/g, '\\$&') }
+
+// 往前翻页时插到「查看更早」按钮的后面（按钮永远在最上面）
+function prependMessage(m) {
+  const box = $('#msgs')
+  if (!box) return
+  if (m?.id && box.querySelector('[data-id="' + cssId(m.id) + '"]')) return
+  const more = box.querySelector('.more-history')
+  box.insertBefore(buildMessageNode(m), more ? more.nextSibling : box.firstChild)
 }
 
 function scrollDown() { const box = $('#msgs'); if (box) box.scrollTop = box.scrollHeight }
@@ -419,6 +495,18 @@ function connectStream() {
       }
     } else if (ev.type === 'typing') {
       if (currentView === 'chat') setTyping(Boolean(ev.on))
+    } else if (ev.type === 'history') {
+      // 服务端过期清理 / 分片边界变了：把客户端里比 droppedBefore 更早的气泡也删掉
+      if (!ev.chatId || !me || String(ev.chatId) === String(me.subject)) {
+        const before = Number(ev.droppedBefore || 0)
+        const box = $('#msgs')
+        if (before > 0 && box) {
+          box.querySelectorAll('.msg[data-t]').forEach((el) => { if (Number(el.dataset.t) < before) el.remove() })
+          historyState.oldestAt = Math.max(historyState.oldestAt || 0, before)
+        }
+        if (typeof ev.hasMore === 'boolean') historyState.hasMore = ev.hasMore
+        if (currentView === 'chat') renderHistoryMore()
+      }
     }
   }
   stream.onerror = () => {}
@@ -596,16 +684,27 @@ async function openStickerPicker(anchor) {
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-collect]')
   if (!b) return
-  const id = b.dataset.collect
-  const box = $('#msgs')
   const img = b.closest('.bubble')?.querySelector('img')
   if (!img) return
   const src = img.getAttribute('src') || ''
-  const data = src.includes(',') ? src.split(',')[1] : ''
-  if (!data) return
+  const data = await imageBase64(src)
+  if (!data) return toast('这张图存不下来', 'err')
   const r = await api('/api/stickers/upload', { method: 'POST', body: { data, from: 'steal', hint: '' } })
   toast(r.ok ? '收进表情库了' : (r.reason || '没收成'), r.ok ? '' : 'err')
 })
+
+// 图片可能是内联 data:，也可能是 /api/media/... 的地址，统一转成 base64 再传
+async function imageBase64(src) {
+  if (!src) return ''
+  if (src.startsWith('data:')) { const i = src.indexOf(','); return i >= 0 ? src.slice(i + 1) : '' }
+  try {
+    const buf = await (await fetch(src)).arrayBuffer()
+    const bytes = new Uint8Array(buf)
+    let bin = ''
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000))
+    return btoa(bin)
+  } catch { return '' }
+}
 
 function paneShell(main, title, headRight) {
   main.innerHTML = '<div class="pane"><div class="pane-head"><h2>' + esc(title) + '</h2><span class="spacer"></span>' + (headRight || '') + '</div><div class="pane-body" id="pane-body"></div></div>'
@@ -887,6 +986,7 @@ function renderSettings(main) {
         sectionListen(),
         sectionImageGen(),
         sectionStickers(),
+        sectionHistory(),
         sectionLogs(),
         sectionSpeakUp(),
         sectionSelfDrive(),
@@ -1250,6 +1350,16 @@ function sectionImageGen() {
 function sectionLogs() {
   return '<div class="section"><h3>日志</h3><div class="body">' +
     rowNum('占用空间（MB）', 'logs.maxMB', '日志不落盘') +
+    '</div></div>'
+}
+
+function sectionHistory() {
+  return '<div class="section"><h3>聊天记录</h3><div class="body">' +
+    rowNum('保留天数', 'history.keepDays', '聊天记录、图片、语音一起按天清理') +
+    '<div class="row"><label>分片</label><div class="ctl"><span class="muted" style="font-size:12px">' +
+    '聊完（空闲 2 分钟）后按每 100 条自动切成一个文件，一个文件就是界面的一页；' +
+    '翻到顶可以点「查看更早的记录」取上一页。图片和语音单独存放，过期后服务器和浏览器缓存一起清。' +
+    '</span></div></div>' +
     '</div></div>'
 }
 

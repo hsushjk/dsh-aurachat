@@ -105,6 +105,9 @@ export const DEFAULTS = {
   },
   memory: { enabled: true, recallCount: 6, dailyConsolidate: true, consolidateTimes: ['04:00', '16:00'] },
 
+  // 聊天记录 + 媒体一起保留多少天；一片 100 条是固定的，不开放给用户改。
+  history: { keepDays: 7 },
+
   selfDrive: {
     enabled: false,
     intervalMinutes: 60,
@@ -232,6 +235,8 @@ export function normalize(raw) {
   c.memory.consolidateTimes = [...new Set((Array.isArray(c.memory.consolidateTimes) ? c.memory.consolidateTimes : String(c.memory.consolidateTimes || '').split(/[\s,，]+/)).map((t) => hhmm(t, '')).filter(Boolean).map((t) => t.padStart(5, '0')))].sort().slice(0, 4)
   if (!c.memory.consolidateTimes.length) c.memory.consolidateTimes = ['04:00', '16:00']
   c.memory.recallCount = num(c.memory.recallCount, 6, 0, 20)
+  if (!c.history || typeof c.history !== 'object') c.history = { keepDays: 7 }
+  c.history.keepDays = num(c.history.keepDays, 7, 1, 365)
   c.imageGen.enabled = bool(c.imageGen.enabled, false)
   c.imageGen.ownerOnly = bool(c.imageGen.ownerOnly, true)
   if (!['openai', 'sdwebui', 'comfyui', 'local', 'code'].includes(c.imageGen.provider)) c.imageGen.provider = 'openai'

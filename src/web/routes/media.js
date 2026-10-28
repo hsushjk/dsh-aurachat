@@ -1,11 +1,48 @@
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { dataDir } from '../../core/store.js'
 import { stickerPath } from '../../features/stickers.js'
+import { mediaPath as mediaFileOf, mimeOfExt } from '../../chat/history.js'
 
 export function register(router, ctx) {
-  const { json, readBody, stripDataUrl, requireUser, requireOwner, getConfig, setConfig, MIME, ROOT } = ctx
+  const { json, send, readBody, stripDataUrl, requireUser, requireOwner, getConfig, setConfig, MIME, ROOT, tokenOf, sessionUser } = ctx
   const { stickers } = ctx.deps
+
+  // <img>/<audio> 没法带 Authorization 头，所以媒体接口允许 ?token= 兜底（和 SSE 一样）。
+  // 注意：DSH 自己会在 127.0.0.1 上种 oc_s cookie，那个 token 不是本插件的会话，
+  // 所以这里要把「URL 里的 token」和「header/cookie 里的 token」都试一遍，谁先认出来用谁。
+  function meOf(req, url) {
+    const fromUrl = url && url.searchParams.get('token')
+    const fromReq = tokenOf(req)
+    for (const t of [fromUrl, fromReq]) {
+      if (!t) continue
+      const me = sessionUser(t)
+      if (me) return me
+    }
+    return null
+  }
+
+  // 聊天里的图片/语音：按 mediaId 取文件，只有本人能取自己会话的媒体。
+  // 带强缓存，客户端/浏览器存过就不会再回来问。
+  router.prefix('GET', 'api/media/', async (req, res, url, p) => {
+    const me = meOf(req, url)
+    if (!me) return send(res, 401, { ok: false, reason: '没登录' })
+    const id = decodeURIComponent(p.slice('api/media/'.length)).split('/')[0]
+    if (!id) return send(res, 404, { ok: false, reason: '没有这个媒体' })
+    const file = mediaFileOf(ctx.chatIdOf(me.subject), id)
+    if (!file || !existsSync(file)) return send(res, 404, { ok: false, reason: '这个媒体已经过期了' })
+    const etag = '"' + id + '"'
+    if (String(req.headers['if-none-match'] || '') === etag) { res.writeHead(304, { etag }); return res.end() }
+    const st = statSync(file)
+    const ext = (id.match(/\.([a-z0-9]+)$/i) || [])[1] || ''
+    res.writeHead(200, {
+      'content-type': mimeOfExt(ext),
+      'content-length': st.size,
+      'cache-control': 'private, max-age=31536000, immutable',
+      etag,
+    })
+    res.end(readFileSync(file))
+  })
 
   router.prefix('GET', 'api/sticker/', async (req, res, url, p) => {
     const md5 = decodeURIComponent(p.slice('api/sticker/'.length)).split('/')[0]

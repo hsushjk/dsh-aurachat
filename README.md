@@ -100,13 +100,33 @@ DeepSeek Harness（DSH）插件，住在浏览器里的 AI 伙伴，该项目仿
 | --- | --- |
 | `config.json` | 设置（密钥单独存，不回传前端） |
 | `users.json` | 主人和客人账号（密码 scrypt 哈希） |
-| `messages.json` | 每个会话的消息 |
+| `chats/<会话>/index.json` | 这个会话的分片目录（每片多少条、起止时间） |
+| `chats/<会话>/seg-*.json` | 消息分片，一片最多 100 条，只存文字和媒体 id |
+| `media/<会话>/<mediaId>` | 图片/语音文件本体（不再塞进 JSON） |
 | `sessions.json` | 会话和人设/权限的对应 |
 | `memories.json` | 记忆四块 |
 | `diary.json` | 空间动态和评论 |
 | `selfdrive.md` | 共享便签 |
 | `chatlog/` | 按天归档的对话原文，记忆整理用 |
 | `personas/` | 人设文件 |
+
+### 聊天记录怎么存、怎么过期
+
+- **文字和媒体分开存**：`image` / `voice` 落成 `media/<会话>/<mediaId>`，分片里只留 `{ mediaId, mediaMime }`。
+  一条媒体的 base64 约 300KB，而一条文字消息只有 150 字节左右，分开之后分片文件基本是 KB 级。
+- **一片 = 界面一页**：文件名带序号（`seg-001-…`、`seg-002-…`），目录按文件名排就是时间顺序。
+  网页首屏只渲染**最新那一片**（刚切完就是几条，看起来干净），往上翻才整片加载上一片，
+  所以文件边界和你眼睛看到的页边界永远一致。
+- **聊天途中不切片**：消息一直追加到当前片，聊 200 条也还是一个文件，不会突然把前面的藏起来。
+- **空闲 2 分钟后自动切**：把当前片按 100 条一份切开（250 条 → 100+100+50），最后一份留作新的当前片。
+- **保留天数**（设置 → 聊天记录，`history.keepDays`，1–365 天，默认 7）：
+  聊天记录和媒体一起过期；过期的片整片删，跨过期线的片把过期的那几条掐掉再重写（所以"保留 7 天"就是 7 天，
+  不会因为凑不满一片而多留十几天）；媒体文件跟着一起删。
+- **往上翻**：网页里翻到顶会出现「查看更早的记录 · 第 N/M 片」，点一下按
+  `GET /api/messages?file=prev&before=<本片最早消息时间>` 取上一整片，滚动位置保持不动。
+  老接口 `?limit=&before=` 还在（按 100 条跨片分页），App 暂时用那个。
+- 客户端（网页/App）也把取过的媒体缓存在本地，下次只看不重下；服务端对 `GET /api/media/<id>` 发
+  `cache-control: private, immutable` + ETag，客户端拿到 304 就不再下字节。
 
 **日志不落盘**：只在内存里留最近几百条（上限可调），重启即丢失
 
@@ -116,8 +136,12 @@ http 接口，客户端需要 base URL + token：
 
 - 固定入口的根路径就是 API 根，`GET /api/state` 免登录，可用来探活和取站点信息。
 - 登录：`POST /api/login` 拿 token，之后带 `Authorization: Bearer <token>`；也支持 `?token=` 深链。
-- 收发：`GET /api/messages`、`POST /api/messages`、`POST /api/voice`、`POST /api/typing`。
-- 实时：`GET /api/stream`（SSE，`message` / `typing` 事件，25s 心跳）。
+- 收发：`GET /api/messages`（`?file=last` 取最新一整片、`?file=prev&before=<t>` 取再往前一整片；
+  老参数 `?before=<时间戳>&limit=<1-100>` 仍按条数跨片分页）、
+  `POST /api/messages`、`POST /api/voice`、`POST /api/typing`。
+- 媒体：`GET /api/media/<mediaId>`（图片/语音本体，支持 `?token=`；带 ETag 和强缓存）。
+- 实时：`GET /api/stream`（SSE，`message` / `typing` / `history` 事件，25s 心跳）。
+  `history` 表示有分片过期被删，客户端按 `droppedBefore` 丢掉更早的气泡。
 - 其余：`/api/config`、`/api/mood`、`/api/diary*`、`/api/memory*`、`/api/stickers*`、`/api/logs`、`/api/status`。
 
 客户端不需要知道 DSH 的路径，也不依赖 cookie。
