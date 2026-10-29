@@ -3,8 +3,7 @@
 ![warn](./test/warn.png)
 
 DeepSeek Harness（DSH）插件，住在浏览器里的 AI 伙伴，该项目仿照(抄袭)[accomplish07zrh-eng/dsh-aurabot-qq](https://github.com/accomplish07zrh-eng/dsh-aurabot-qq)，区别是不依赖QQ，目前已实现：有人格、心情和记忆，能看图、发语音、听语音、发和收表情包、写日记、逛空间回评论、还会主动找你聊天。
-
-![example1](./test/1.png)
+[实机截图](./test/1.png)
 
 **入口**
 
