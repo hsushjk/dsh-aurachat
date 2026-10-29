@@ -2,15 +2,21 @@
 
 ![warn](./test/warn.png)
 
-DeepSeek Harness（DSH）插件，住在浏览器里的 AI 伙伴，该项目仿照(抄袭)[accomplish07zrh-eng/dsh-aurabot-qq](https://github.com/accomplish07zrh-eng/dsh-aurabot-qq)，区别是不依赖QQ，目前已实现：有人格、心情和记忆，能看图、发语音、听语音、发和收表情包、写日记、逛空间回评论、还会主动找你聊天。
+DeepSeek Harness（DSH）插件，AI 伙伴，该项目仿照(抄袭)[accomplish07zrh-eng/dsh-aurabot-qq](https://github.com/accomplish07zrh-eng/dsh-aurabot-qq)，区别是不依赖QQ，目前已实现：有人格、心情和记忆，能看图、发语音、听语音、发和收表情包、写日记、逛空间回评论、还会主动找你聊天。
+
 [实机截图](./test/1.png)
+
+**客户端(可选)**
+
+- [aurachat-client-android](https://github.com/hsushjk/aurachat-client-android)
+- [aurachat-client-win](https://github.com/hsushjk/aurachat-client-win)
+**客户端登录意义：后台运行，消息提示，绕过ssl限制**
+**不能使用客户端直接连接刚安装的客户端，需要在 Web 界面或 DSH 内走完初始化流程**
 
 **入口**
 
 - 默认绑定`0.0.0.0:2332`可直接通过浏览器访问，ip和端口可在设置修改
 - DSH 左侧栏「自动化任务」下面的「AuraChat」，功能基本一致，但无法发送语音
-- 支持兼容的跨平台客户端登录，例如姊妹项目[aurachat-client](https://github.com/hsushjk/aurachat-client)
-- （跨平台客户端登录意义：后台运行，消息提示，绕过ssl限制）
 
 **聊天**
 
