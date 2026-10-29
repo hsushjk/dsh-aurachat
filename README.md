@@ -12,6 +12,7 @@ DeepSeek Harness（DSH）插件，AI 伙伴，该项目仿照(抄袭)[accomplish
 - [aurachat-client-win](https://github.com/hsushjk/aurachat-client-win)
 
 **客户端登录意义：后台运行，消息提示，绕过ssl限制**
+
 **不能使用客户端直接连接刚安装的客户端，需要在 Web 界面或 DSH 内走完初始化流程**
 
 **入口**
