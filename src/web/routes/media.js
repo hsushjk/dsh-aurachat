@@ -115,7 +115,12 @@ export function register(router, ctx) {
     const me = requireOwner(req, res); if (!me) return
     const b = await readBody(req)
     const data = stripDataUrl(b.data)
-    if (!data) return json(res, { ok: false, reason: '没有图片数据' })
+    // 空数据 = 用回默认图标（删掉头像文件，回到 icon.svg）
+    if (!data) {
+      try { unlinkSync(dataDir('avatar')) } catch {}
+      try { unlinkSync(dataDir('avatar.mime')) } catch {}
+      return json(res, { ok: true })
+    }
     writeFileSync(dataDir('avatar'), Buffer.from(data, 'base64'))
     writeFileSync(dataDir('avatar.mime'), b.mime || 'image/png')
     return json(res, { ok: true })
