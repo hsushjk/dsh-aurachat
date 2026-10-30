@@ -1,9 +1,9 @@
 {
   "name": "dsh-aurachat",
-  "version": "1.0",
+  "version": "1.0.0",
   "description": "AuraChat：住在网页里的 AI 伙伴 —— DeepSeek Harness 插件",
   "license": "MIT",
-  "private": true,
+  "author": "hsushjk",
   "type": "module",
   "main": "src/host.js",
   "exports": {
@@ -11,6 +11,37 @@
     "./client": "./client/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "client",
+    "personas",
+    "public",
+    "cordis.patch.yml",
+    "README.md",
+    "dshreadme.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "plugin",
+    "web",
+    "ai-companion",
+    "persona"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hsushjk/dsh-aurachat.git"
+  },
+  "homepage": "https://github.com/hsushjk/dsh-aurachat#readme",
+  "bugs": {
+    "url": "https://github.com/hsushjk/dsh-aurachat/issues"
   },
   "dsh": {
     "bundle": {
@@ -25,21 +56,5 @@
         "react"
       ]
     }
-  },
-  "keywords": [
-    "deepseek-harness",
-    "dsh-plugin",
-    "web",
-    "ai-companion"
-  ],
-  "files": [
-    "src",
-    "client",
-    "personas",
-    "public",
-    "cordis.patch.yml",
-    "README.md",
-    "dshreadme.md",
-    "package.json"
-  ]
+  }
 }
