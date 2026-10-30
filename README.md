@@ -55,6 +55,16 @@ DeepSeek Harness（DSH）插件，AI 伙伴，该项目仿照(抄袭)[accomplish
 
 需要 **DeepSeek Harness 桌面版(官方)**（当然也最好是官方桌面版）。
 
+### 从 npm 装（推荐）
+
+```powershell
+dsh plugin --profile desktop add dsh-aurachat
+```
+
+`desktop` 换成你自己的 profile 名。装完重启 DSH，侧栏出现入口；也可以直接浏览器打开 `http://127.0.0.1:2332/`。
+
+### 从本地目录装（自己改代码时用）
+
 1. 把整个目录放到你放插件的位置，比如 `D:\dsh-aurachat`。
 2. 在 DSH 的 profile 里登记成依赖（路径换成你自己的）：
 
